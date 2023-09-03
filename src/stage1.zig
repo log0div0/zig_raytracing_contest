@@ -209,6 +209,7 @@ fn loadTriangles(gltf: Gltf, triangles: *std.MultiArrayList(stage2.Triangle)) !v
                 const matrix = Mat4{.data = gltf.getGlobalTransform(node)};
 
                 for (0..triangles_count) |triangle_idx| {
+                    var bbox: Bbox = .{};
                     var pos: [3]Vec3 = undefined;
                     var data = stage3.Triangle.Data {
                         .v = undefined,
@@ -218,12 +219,15 @@ fn loadTriangles(gltf: Gltf, triangles: *std.MultiArrayList(stage2.Triangle)) !v
                         const index_idx = triangle_idx*3+i;
                         const vertex_idx = indices.at(index_idx);
                         pos[i] = matrix.transformPosition(positions.at(vertex_idx));
+                        bbox = bbox.extendBy(pos[i]);
                         data.v[i] = .{
                             .normal = matrix.transformDirection(normals.at(vertex_idx)).normalize(), // TODO: use adjusent matrix
                             .texcoord = texcoords.at(vertex_idx),
                         };
                     }
                     triangles.set(counter, .{
+                        .centroid = bbox.center().data,
+                        .bbox = bbox,
                         .pos = pos,
                         .data = data,
                     });

@@ -8,6 +8,7 @@ const linalg = @import("linalg.zig");
 const Vec3 = linalg.Vec3;
 const Ray = linalg.Ray;
 const Grid = linalg.Grid;
+const Bbox = linalg.Bbox;
 
 const add = Vec3.add;
 
@@ -104,13 +105,22 @@ pub const Material = struct {
 };
 
 pub const Cell = struct {
-    begin: u32,
-    end: u32,
+    bvh_offset: usize,
+};
+
+pub const BVHNode = struct {
+    bbox: Bbox,
+    offset: union {
+        first_triangle_offset: usize,
+        second_child_offset: usize,
+    },
+    num_triangles: usize,
 };
 
 pub const Scene = struct {
     grid: Grid,
     cells: []Cell,
+    bvh_nodes: []BVHNode,
     triangles_pos: []Triangle.Pos,
     triangles_data: []Triangle.Data,
     materials: []Material,
@@ -136,19 +146,45 @@ pub const Scene = struct {
             while (true) {
                 const cell_idx = scene.grid.getCellIdx(grid_it.cell[0], grid_it.cell[1], grid_it.cell[2]);
                 const cell = scene.cells[cell_idx];
-                for (cell.begin..cell.end) |triangle_idx|
-                {
-                    const triangle = scene.triangles_pos[triangle_idx];
-                    var hit = Hit{
-                        .t = undefined,
-                        .u = undefined,
-                        .v = undefined,
-                        .triangle_idx = triangle_idx
-                    };
-                    if (triangle.rayIntersection(ray, &hit.t, &hit.u, &hit.v)) {
-                        if (nearest_hit.t > hit.t and hit.t > 0 and triangle_idx != ignore_triangle) {
-                            nearest_hit = hit;
+                if (cell.bvh_offset != std.math.maxInt(usize)) {
+                    var stack_offset: usize = 0;
+                    var stack: [64]usize = undefined;
+                    stack[0] = cell.bvh_offset;
+                    while (true) {
+                        const bvh_node_idx = stack[stack_offset];
+                        const bvh_node = &scene.bvh_nodes[bvh_node_idx];
+                        var t_bvh: f32 = undefined;
+                        const does_intersect = bvh_node.bbox.rayIntersection(ray, &t_bvh);
+                        if (does_intersect and t_bvh < nearest_hit.t) {
+                            if (bvh_node.num_triangles != 0) {
+                                const begin = bvh_node.offset.first_triangle_offset;
+                                const end = begin + bvh_node.num_triangles;
+                                for (begin..end) |triangle_idx|
+                                {
+                                    const triangle = scene.triangles_pos[triangle_idx];
+                                    var hit = Hit{
+                                        .t = undefined,
+                                        .u = undefined,
+                                        .v = undefined,
+                                        .triangle_idx = triangle_idx
+                                    };
+                                    if (triangle.rayIntersection(ray, &hit.t, &hit.u, &hit.v)) {
+                                        if (nearest_hit.t > hit.t and hit.t > 0 and triangle_idx != ignore_triangle) {
+                                            nearest_hit = hit;
+                                        }
+                                    }
+                                }
+                            } else {
+                                stack[stack_offset] = bvh_node_idx + 1;
+                                stack_offset += 1;
+                                stack[stack_offset] = bvh_node.offset.second_child_offset;
+                                continue;
+                            }
                         }
+                        if (stack_offset == 0) {
+                            break;
+                        }
+                        stack_offset -= 1;
                     }
                 }
                 const t_next_crossing = grid_it.next();
@@ -212,13 +248,17 @@ pub const Scene = struct {
     }
 
     pub fn render(self: Scene, threads: []std.Thread, camera: Camera, img: zigimg.Image) !void {
-        for (threads, 0..) |*thread, i| {
-            thread.* = try std.Thread.spawn(.{}, renderWorker, .{
-                self, i, threads.len, camera, img
-            });
-        }
-        for (threads) |*thread| {
-            thread.join();
+        if (threads.len == 1) {
+            renderWorker(self, 0, 1, camera, img);
+        } else {
+            for (threads, 0..) |*thread, i| {
+                thread.* = try std.Thread.spawn(.{}, renderWorker, .{
+                    self, i, threads.len, camera, img
+                });
+            }
+            for (threads) |*thread| {
+                thread.join();
+            }
         }
     }
 

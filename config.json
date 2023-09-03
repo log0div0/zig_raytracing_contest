@@ -1,5 +1,6 @@
 {
-	"grid_resolution": null,
+	"grid_resolution": [1,1,1],
+	"max_triangles_per_bvh_node": 4,
 	"num_threads": null,
 	"num_samples": 3,
 	"max_bounce": 4

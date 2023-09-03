@@ -18,6 +18,16 @@ pub fn Vec(comptime size: usize, comptime T: type) type {
             return self.data[2];
         }
 
+        pub fn maxDim(self: Self) u8 {
+            var max_idx: u8 = 0;
+            inline for (1..size) |i| {
+                if (self.data[max_idx] < self.data[i]) {
+                    max_idx = i;
+                }
+            }
+            return max_idx;
+        }
+
         pub fn zeroes() Self {
             return .{ .data = .{0, 0, 0}};
         }
@@ -275,22 +285,29 @@ pub const Bbox = struct {
     min: Vec3 = Vec3.posInf(),
     max: Vec3 = Vec3.negInf(),
 
-    pub fn extendBy(self: *Bbox, pos: Vec3) void {
-        self.min = Vec3.min(self.min, pos);
-        self.max = Vec3.max(self.max, pos);
+    pub fn extendBy(self: Bbox, pos: Vec3) Bbox {
+        return .{
+            .min = Vec3.min(self.min, pos),
+            .max = Vec3.max(self.max, pos),
+        };
     }
 
-    pub fn unionWith(self: *Bbox, b: Bbox) void {
-        self.min = Vec3.min(self.min, b.min);
-        self.max = Vec3.max(self.max, b.max);
+    pub fn unionWith(a: Bbox, b: Bbox) Bbox {
+        return .{
+            .min = Vec3.min(a.min, b.min),
+            .max = Vec3.max(a.max, b.max),
+        };
     }
 
     pub fn size(self: Bbox) Vec3 {
         return subtract(self.max, self.min);
     }
 
-    pub fn rayIntersection(self: Bbox, ray: Ray, t: *f32) bool
-    {
+    pub fn center(self: Bbox) Vec3 {
+        return add(self.max, self.min).scale(0.5);
+    }
+
+    pub fn rayIntersection(self: Bbox, ray: Ray, t: *f32) bool {
         const sign = ray.dir.lessThan(Vec3.zeroes());
 
         const min = sign.select(self.max, self.min).subtract(ray.orig).div(ray.dir);
@@ -465,7 +482,7 @@ test "grid traceRay 1" {
     const grid = Grid.init(.{
         .min = vec3(0,0,0),
         .max = vec3(5,5,5),
-    }, .{5,5,5});
+    }, vec3u(5,5,5));
     const ray = .{
         .orig = vec3(0.5, 0.5, 0.5),
         .dir = vec3(2, 1, 0).normalize(),
@@ -491,7 +508,7 @@ test "grid traceRay 2" {
     const grid = Grid.init(.{
         .min = vec3(0,0,0),
         .max = vec3(5,5,5),
-    }, .{5,5,5});
+    }, vec3u(5,5,5));
     const ray = .{
         .orig = vec3(0.5, 10.0, 0.5),
         .dir = vec3(0,-1,0),
@@ -513,7 +530,7 @@ test "grid traceRay 3" {
     const grid = Grid.init(.{
         .min = vec3(0,0,0),
         .max = vec3(5,5,5),
-    }, .{5,5,5});
+    }, vec3u(5,5,5));
     const ray = .{
         .orig = vec3(0.5, -5.0, 0.5),
         .dir = vec3(0,1,0),
@@ -535,7 +552,7 @@ test "grid traceRay 4" {
     const grid = Grid.init(.{
         .min = vec3(0,0,0),
         .max = vec3(5,5,5),
-    }, .{5,5,5});
+    }, vec3u(5,5,5));
     const ray = .{
         .orig = vec3(0.5, 0.5, 0.5),
         .dir = vec3(1, 1, 0).normalize(),

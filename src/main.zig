@@ -52,6 +52,7 @@ pub fn loadFile(path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
 
 const Config = struct {
     grid_resolution: ?Vec3u,
+    max_triangles_per_bvh_node: usize,
     num_threads: ?u8,
     num_samples: u16,
     max_bounce: u16,
